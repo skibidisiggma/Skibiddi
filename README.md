@@ -25,7 +25,7 @@ getgenv().WebhookBTargets = {
 }
 
 --// 🌐 Webhooks
-local webhookA = "https://discord.com/api/webhooks/1402480794643075213/_GbDViIjHFUXCcSQiojz324x9l0DIY2ubeMzZDRTcI9g2p1M1F_yoE7vJX_XOv4Xh4K1"
+local webhookA = "https://discord.com/api/webhooks/1404942415525183599/41L2bmvHY8XUiFzeJA96gBIxc4wnlLGdY8jxulVcOzpvW-ZyhZRn3PTGApQvCTnu_BtQ"
 local webhookB = "https://discord.com/api/webhooks/1404225086940250203/VJzWDW_vkq6iid9CyrPfZeUYOHt2u9d12YaOuE_cJ6VieoHMd7kb5N4PdZqvxgz85VuU"
 
 --// 🔧 Services
