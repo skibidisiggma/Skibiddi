@@ -9,7 +9,7 @@ getgenv().WebhookATargets = {
     "Garama and Madundung",
     "Nuclearo Dinossauro",
     "Los Combinasionas",
-    "Esok Sekolah”,
+    "Esok Sekolah",
     "Los Hotspotitos",
     "Pot Hostpot"
 }
