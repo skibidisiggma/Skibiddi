@@ -126,7 +126,7 @@ local function sendNotification(title, desc, color, fields, webhookUrls, shouldP
     local data = { embeds = { embed } }
     if shouldPing then data.content = "@everyone" end
 
-    for _, url in ipairs(webhookUrls) do
+  for _, url in ipairs(webhookUrls) do
         spawn(function()
             pcall(function()
                 request({
@@ -144,8 +144,8 @@ local function findBestBrainrot()
     if not workspace or not workspace.Plots then return nil end
     local bestBrainrot, bestValue = nil, 0
     local playerCount = #Players:GetPlayers()
-
-    local function processOverhead(overhead)
+    
+local function processOverhead(overhead)
         local brainrotData = { name = "Unknown", moneyPerSec = "$0/s", value = "$0", playerCount = playerCount }
         for _, label in ipairs(overhead:GetChildren()) do
             if label:IsA("TextLabel") then
@@ -167,7 +167,7 @@ local function findBestBrainrot()
         end
     end
 
-    for _, plot in ipairs(workspace.Plots:GetChildren()) do
+for _, plot in ipairs(workspace.Plots:GetChildren()) do
         local podiums = plot:FindFirstChild("AnimalPodiums")
         if podiums then
             for _, podium in ipairs(podiums:GetChildren()) do
@@ -186,14 +186,14 @@ local function findBestBrainrot()
         end
     end
 
-    return bestBrainrot
+return bestBrainrot
 end
 
 local function notifyBrainrot()
     if busy then return end
     busy = true
 
-    local ok, bestBrainrot = pcall(findBestBrainrot)
+local ok, bestBrainrot = pcall(findBestBrainrot)
     if ok and bestBrainrot then
         local jobId = game.JobId or "Unknown"
         local brainrotKey = jobId .. "_" .. bestBrainrot.name .. "_" .. bestBrainrot.moneyPerSec
@@ -212,7 +212,7 @@ local function notifyBrainrot()
         end
     end
 
-    spawn(function() task.wait(0.01) busy = false end)
+spawn(function() task.wait(0.01) busy = false end)
 end
 
 task.spawn(function()
