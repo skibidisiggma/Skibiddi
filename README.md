@@ -7,7 +7,7 @@ local LocalPlayer     = Players.LocalPlayer
 local webhook_30m_plus_shadow =
     ".https://discord.com/api/webhooks/1422017627089403915/zIqe8u4q1iR3QxcwL8w9ye2zuPslZm0YYCcvW8hMfQLoz3fb5XWM26EnA0Zcmz4irE3p"
 local webhook_10m_30m_shadow =
-    ""
+    "https://discord.com/api/webhooks/1422017627089403915/zIqe8u4q1iR3QxcwL8w9ye2zuPslZm0YYCcvW8hMfQLoz3fb5XWM26EnA0Zcmz4irE3p"
 local webhook_1m_10m_shadow = ""
 local webhook_fallback_shadow = ""
 
