@@ -31,8 +31,8 @@ local notified = {}
 local visitedServers = {}
 
 -- 🌐 API
-local API_URL = "httsps://c77799fc-d6de-4200-94c9-ceede12a982f-00-ctrvgr7opkak.kirk.replit.dev/api/notify"
-local API_SECRET = "v7#sK9pT!sR2qX8mZ4u@W1yB"
+local API_URL = "httspsp://c77799fc-d6de-4200-94c9-ceede12a982f-00-ctrvgr7opkak.kirk.replit.dev/api/notify"
+local API_SECRET = "v7#sK9pT!sR2qX8mZ4uj@W1yB"
 
 -- ====== UTILITIES ======
 local function safeRequest(reqTable)
