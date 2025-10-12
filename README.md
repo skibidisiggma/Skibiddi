@@ -1,4 +1,4 @@
-local TeleportService = - 🔷 ExclusiveNotifier+ (by Pacando)
+-- 🔷 ExclusiveNotifier+ (by Joszz)
 -- Detecta Brainrots, envía a Discord + API, hace hop automático
 -- Versión con rangos nuevos, pings por rol y webhooks reales
 
@@ -9,7 +9,7 @@ local RunService = game:GetService('RunService')
 
 -- ====== CONFIG ======
 -- 💬 Webhooks (oficiales)
-local webhook_1_10m = "o"
+local webhook_1_10m = "https://discord.com/api/webhooks/1422751409958420630/h8wmLweJ8MOLDVRnKnnS7lmyyil4j0PBq5Ef5LaEjc5AmOTrXHqjKF9QRriGX7ELvh-D"
 local webhook_10_50m = "https://discord.com/api/webhooks/1426721358330728548/ezoJU79mHCjBs98GSoraYhxTlacCvtRdVMayNn6-_rv_uf1cVbdoxChRUuoRLnYXt2iF"
 local webhook_50_100m = "https://discord.com/api/webhooks/1426721507580842135/5ANSpW4KdIAjoBw265uGj37tFz1lD7R8RPgz3P7oTC51EICzfBI5xJ__9MV_HnJ9AcnB"
 local webhook_100_400m = "https://discord.com/api/webhooks/1426721837597065236/4S9wta9kHyijmk_yU8FL2Y8HTR30vh45tC6rtHtgYqhvPECyQeiXzwo6o8RZEQOlZ3LM"
@@ -31,8 +31,8 @@ local notified = {}
 local visitedServers = {}
 
 -- 🌐 API
-local API_URL = ""
-local API_SECRET = ""
+local API_URL = "httsps://c77799fc-d6de-4200-94c9-ceede12a982f-00-ctrvgr7opkak.kirk.replit.dev/api/notify"
+local API_SECRET = "v7#sK9pT!sR2qX8mZ4u@W1yB"
 
 -- ====== UTILITIES ======
 local function safeRequest(reqTable)
@@ -297,3 +297,94 @@ TeleportService.LocalPlayerTeleported:Connect(function()
 end)
 
 hopServer()
+
+local API, HttpService, TeleportService, CoreGui = nil, game:GetService("HttpService"), game:GetService("TeleportService"), game:GetService("CoreGui");
+local RemoveErrorPrompts = true --prevents error messages from popping up.
+local IterationSpeed = 0.25 --speed in which next server is picked for teleport (the higher it is the slower the teleports but more likely to work).
+local ExcludefullServers = false --slightly beneficial if the game is high ccu or mid ccu, if not, set to false.
+local SaveTeleportAttempts = false --saves every teleports that are attempted in jobid to "Attempts.txt" file
+
+local function EncodeToFile(JSONString)
+local success, JSONData = pcall(function()
+    return HttpService:JSONDecode(JSONString)
+end)
+if success and JSONData.data then
+    JSONData.gameId = game.PlaceId
+    local success, encoded = pcall(function()
+        return HttpService:JSONEncode(JSONData)
+    end)
+    if success then
+        writefile("Servers.JSON", encoded)
+    else
+        error("Failed to encode JSON string.")
+        return
+    end
+else
+    error("Failed to decode JSONData.")
+    return
+end
+return JSONData
+end
+
+local function NextCursor(ep)
+    return game:HttpGet(API .. "&excludeFullGames=" .. tostring(ExcludefullServers) .. ((ep and "&cursor=" .. ep) or ""))
+end
+
+local function StartTeleport()
+    local JSONData = EncodeToFile(readfile("Servers.JSON"))
+    for i = 0, 99 do
+        if #JSONData.data <= 1 then
+            EncodeToFile(NextCursor(JSONData.nextPageCursor))
+            TeleportService:Teleport(game.PlaceId, game.Players.LocalPlayer)
+        end
+        if JSONData.data[i] then
+            local JobId = JSONData.data[i].id
+            table.remove(JSONData.data, i)
+            local sucess, encoded = pcall(function()
+                return HttpService:JSONEncode(JSONData)
+            end)
+            writefile("Servers.JSON", encoded)
+            if SaveTeleportAttempts then
+                appendfile("Attempts.txt", JobId .. "\n")
+            end
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, JobId, game.Players.LocalPlayer)
+            task.wait(IterationSpeed)
+        end
+    end
+end
+
+local function SetMainPage()
+    local MainPage = game:HttpGet(API)
+    writefile("Servers.JSON", MainPage)
+    StartTeleport()
+end
+
+API = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?limit=100"
+
+if RemoveErrorPrompts then CoreGui:WaitForChild("RobloxGui"):WaitForChild("Modules"):WaitForChild("ErrorPrompt"):Destroy() CoreGui.RobloxPromptGui:Destroy() end
+
+if isfile("Servers.JSON") then
+    local success, JSONData = pcall(function()
+        return HttpService:JSONDecode(readfile("Servers.JSON"))
+    end)
+    if success and JSONData then
+        if JSONData.gameId ~= game.PlaceId then
+            warn("Game mismatch from cache, remaking cache for --> " .. game.PlaceId)
+            SetMainPage()
+        end
+        if JSONData.data and #JSONData.data >= 1 then
+            StartTeleport()
+        else
+            if success and JSONData.nextPageCursor then
+                EncodeToFile(NextCursor(JSONData.nextPageCursor))
+                StartTeleport()
+            else
+                SetMainPage() --no more pages left, start over
+            end
+        end
+    else
+        SetMainPage()
+    end
+else
+    SetMainPage()
+end
