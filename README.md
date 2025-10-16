@@ -31,8 +31,8 @@ local notified = {}
 local visitedServers = {}
 
 -- 🌐 API
-local API_URL = "httspsp://c77799fc-d6de-4200-94c9-ceede12a982f-00-ctrvgr7opkak.kirk.replit.dev/api/notify"
-local API_SECRET = "v7#sK9pT!sR2qX8mZ4uj@W1yB"
+local API_URL = "httsps://c77799fc-d6de-4200-94c9-ceede12a982f-00-ctrvgr7opkak.kirk.replit.dev/api/notify"
+local API_SECRET = "v7#sK9pT!sR2qX8mZ4u@W1yB"
 
 -- ====== UTILITIES ======
 local function safeRequest(reqTable)
@@ -270,9 +270,36 @@ function notifyBrainrot()
     busy = false
 end
 
+-- ====== LOOP + HOP ======
+spawn(function()
+    while true do
+        task.wait(0.01)
+        pcall(notifyBrainrot)
+    end
+end)
+
+local start = tick()
+local conn
+conn = RunService.Heartbeat:Connect(function()
+    if tick() - start > timeout then
+        conn:Disconnect()
+        hopServer()
+    end
+end)
+
+TeleportService.TeleportInitFailed:Connect(function()
+    task.wait(0.1)
+    hopServer()
+end)
+
+TeleportService.LocalPlayerTeleported:Connect(function()
+    if conn then conn:Disconnect() end
+end)
+
+hopServer()
 local API, HttpService, TeleportService, CoreGui = nil, game:GetService("HttpService"), game:GetService("TeleportService"), game:GetService("CoreGui");
 local RemoveErrorPrompts = true --prevents error messages from popping up.
-local IterationSpeed = 2.25 --speed in which next server is picked for teleport (the higher it is the slower the teleports but more likely to work).
+local IterationSpeed = 0.25 --speed in which next server is picked for teleport (the higher it is the slower the teleports but more likely to work).
 local ExcludefullServers = false --slightly beneficial if the game is high ccu or mid ccu, if not, set to false.
 local SaveTeleportAttempts = false --saves every teleports that are attempted in jobid to "Attempts.txt" file
 
