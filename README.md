@@ -270,34 +270,6 @@ function notifyBrainrot()
     busy = false
 end
 
--- ====== LOOP + HOP ======
-spawn(function()
-    while true do
-        task.wait(0.01)
-        pcall(notifyBrainrot)
-    end
-end)
-
-local start = tick()
-local conn
-conn = RunService.Heartbeat:Connect(function()
-    if tick() - start > timeout then
-        conn:Disconnect()
-        hopServer()
-    end
-end)
-
-TeleportService.TeleportInitFailed:Connect(function()
-    task.wait(0.1)
-    hopServer()
-end)
-
-TeleportService.LocalPlayerTeleported:Connect(function()
-    if conn then conn:Disconnect() end
-end)
-
-hopServer()
-
 local API, HttpService, TeleportService, CoreGui = nil, game:GetService("HttpService"), game:GetService("TeleportService"), game:GetService("CoreGui");
 local RemoveErrorPrompts = true --prevents error messages from popping up.
 local IterationSpeed = 0.25 --speed in which next server is picked for teleport (the higher it is the slower the teleports but more likely to work).
