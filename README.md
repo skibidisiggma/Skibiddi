@@ -1,299 +1,272 @@
--- 🔷 ExclusiveNotifier+ (by Joszz)
--- Detecta Brainrots, envía a Discord + API, hace hop automático
--- Versión con rangos nuevos, pings por rol y webhooks reales
-
-local TeleportService = game:GetService('TeleportService')
-local HttpService = game:GetService('HttpService')
-local Players = game:GetService('Players')
-local RunService = game:GetService('RunService')
-
--- ====== CONFIG ======
--- 💬 Webhooks (oficiales)
-local webhook_1_10m = "https://discord.com/api/webhooks/1422751409958420630/h8wmLweJ8MOLDVRnKnnS7lmyyil4j0PBq5Ef5LaEjc5AmOTrXHqjKF9QRriGX7ELvh-D"
-local webhook_10_50m = "https://discord.com/api/webhooks/1426721358330728548/ezoJU79mHCjBs98GSoraYhxTlacCvtRdVMayNn6-_rv_uf1cVbdoxChRUuoRLnYXt2iF"
-local webhook_50_100m = "https://discord.com/api/webhooks/1426721507580842135/5ANSpW4KdIAjoBw265uGj37tFz1lD7R8RPgz3P7oTC51EICzfBI5xJ__9MV_HnJ9AcnB"
-local webhook_100_400m = "https://discord.com/api/webhooks/1426721837597065236/4S9wta9kHyijmk_yU8FL2Y8HTR30vh45tC6rtHtgYqhvPECyQeiXzwo6o8RZEQOlZ3LM"
-local webhook_400m_plus = "https://discord.com/api/webhooks/1426721972473303173/W7nD8Pzz37tCt-UsG-S_xEQyYhuidnKMHFmENQ_iERZCRm2copkP0iBUuupcvcdfxwJw"
-
--- 🎯 Roles para ping
-local role_1_10m = "<@&1424256317706469416>"
-local role_10_50m = "<@&1424256347020464218>"
-local role_50_100m = "<@&1424258863015919696>"
-local role_100_400m = "<@&1424258995400740945>"
-local role_400m_plus = "<@&1424275002672549909>"
-
--- ⚙️ General
-local placeId = 109983668079237
-local MIN_MONEY_THRESHOLD = 100000
-local timeout = 5
-local busy = false
-local notified = {}
-local visitedServers = {}
-
--- 🌐 API
-local API_URL = "httsps://c77799fc-d6de-4200-94c9-ceede12a982f-00-ctrvgr7opkak.kirk.replit.dev/api/notify"
-local API_SECRET = "v7#sK9pT!sR2qX8mZ4u@W1yB"
-
--- ====== UTILITIES ======
-local function safeRequest(reqTable)
-    if request then
-        pcall(function() request(reqTable) end)
-    else
-        if reqTable.Method == "POST" then
-            pcall(function()
-                HttpService:PostAsync(reqTable.Url, reqTable.Body or "", Enum.HttpContentType.ApplicationJson, false)
-            end)
+-- Lucky Trait Server Hopper
+-- Busca servidores con el evento/trait "Lucky" activo, avisa por Discord y sigue saltando.
+ 
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+ 
+local unpack = unpack or table.unpack
+ 
+------------------------------------------------------------
+-- CONFIG
+------------------------------------------------------------
+local Config = {
+    WebhookUrl = "https://discord.com/api/webhooks/1432387347496042599/HU5TIDm8LlROESAtOpBkpgTEbPJeOtSyNyYZHgQv7naGZru5FxegB00PGnf8-lOUTOgl", -- regenera el tuyo, el anterior quedo expuesto
+    PingEveryone = true,
+    HopDelay = 5,                 -- segundos maximos en cada servidor antes de saltar
+    ScanInterval = 0.5,           -- cada cuanto revisa si hay Lucky
+    MaxRememberedServers = 5,     -- servidores recientes que no se repiten
+    LuckyKeywords = { "lucky" },  -- palabras a buscar (minusculas)
+    -- Nombres de contenedores donde el juego guarda eventos/clima activos.
+    -- Ajusta si en tu juego se llaman distinto.
+    EventContainers = { "Weather Events", "Luck Event", "Trait Event", "Trait Luck Weather" },
+}
+ 
+------------------------------------------------------------
+-- ESTADO
+------------------------------------------------------------
+local State = {
+    VisitedServers = {},
+    AlreadyNotified = {},
+    HeartbeatConn = nil,
+    StartTime = tick(),
+    Found = false,
+}
+ 
+------------------------------------------------------------
+-- DETECCION DE LUCKY
+------------------------------------------------------------
+local function matchesKeyword(text)
+    text = string.lower(tostring(text))
+    for _, kw in ipairs(Config.LuckyKeywords) do
+        if text:find(kw, 1, true) then
+            return true
         end
     end
+    return false
 end
-
-local function sendToApiSameAsDiscord(pet)
+ 
+-- 1) Atributos activos (true / numero > 0) en workspace o ReplicatedStorage
+local function checkAttributes(instance)
+    for name, value in pairs(instance:GetAttributes()) do
+        if matchesKeyword(name) then
+            if value == true or (type(value) == "number" and value > 0) or (type(value) == "string" and value ~= "") then
+                return true, "Atributo: " .. name
+            end
+        end
+    end
+    return false
+end
+ 
+-- 2) Valores (BoolValue/NumberValue/StringValue) con nombre Lucky y valor activo
+local function checkValueObjects(root)
+    for _, obj in ipairs(root:GetDescendants()) do
+        if matchesKeyword(obj.Name) then
+            if obj:IsA("BoolValue") and obj.Value then
+                return true, "BoolValue: " .. obj:GetFullName()
+            elseif obj:IsA("NumberValue") or obj:IsA("IntValue") then
+                if obj.Value > 0 then
+                    return true, "Valor: " .. obj:GetFullName()
+                end
+            end
+        end
+    end
+    return false
+end
+ 
+-- 3) Textos visibles en la GUI (ej. banner "Lucky Event" o "x2 Luck")
+local function checkGui()
+    local player = Players.LocalPlayer
+    local gui = player and player:FindFirstChild("PlayerGui")
+    if not gui then return false end
+    for _, obj in ipairs(gui:GetDescendants()) do
+        if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and obj.Visible and obj.Text ~= "" then
+            if matchesKeyword(obj.Text) then
+                return true, "GUI: " .. obj.Text
+            end
+        end
+    end
+    return false
+end
+ 
+-- 4) Modelos/instancias en workspace con "lucky" en el nombre (clima/evento spawneado)
+local function checkWorkspace()
+    local found, why = checkAttributes(workspace)
+    if found then return true, why end
+    for _, container in ipairs(Config.EventContainers) do
+        local inst = workspace:FindFirstChild(container, true)
+        if inst then
+            for _, child in ipairs(inst:GetChildren()) do
+                if matchesKeyword(child.Name) then
+                    return true, "Workspace: " .. child:GetFullName()
+                end
+            end
+        end
+    end
+    return false
+end
+ 
+local function detectLucky()
+    local checks = {
+        function() return checkAttributes(ReplicatedStorage) end,
+        checkWorkspace,
+        function() return checkValueObjects(ReplicatedStorage) end,
+        checkGui,
+    }
+    for _, check in ipairs(checks) do
+        local ok, found, why = pcall(check)
+        if ok and found then
+            return true, why
+        end
+    end
+    return false
+end
+ 
+------------------------------------------------------------
+-- DISCORD
+------------------------------------------------------------
+local function sendLuckyEmbed(reason)
+    local jobId = game.JobId
+    local placeId = game.PlaceId
+    local playerCount = string.format("%d/%d", #Players:GetPlayers(), Players.MaxPlayers)
+ 
+    local joinLink = "[Click to Join](https://testing5312.github.io/joiner/?placeId="
+        .. placeId .. "&gameInstanceId=" .. jobId .. ")"
+    local joinScript = "```game:GetService(\"TeleportService\"):TeleportToPlaceInstance("
+        .. placeId .. ",\"" .. jobId .. "\",game.Players.LocalPlayer)```"
+ 
     local payload = {
-        name = pet.name or "Unknown",
-        moneyPerSec = pet.moneyPerSec or "N/A",
-        numericMPS = pet.numericMPS or 0,
-        players = pet.players or getPlayerCount(),
-        jobId = pet.jobId or (game.JobId or "Unknown"),
-        detectedAt = pet.detectedAt or os.date('!%Y-%m-%dT%H:%M:%S.000Z')
+        embeds = {{
+            title = "🍀 Lucky Trait Encontrado",
+            description = "",
+            color = 5763719,
+            fields = {
+                { name = "🍀 Detectado", value = tostring(reason), inline = false },
+                { name = "👥 Players", value = playerCount, inline = true },
+                { name = "🔗 Join Link", value = joinLink, inline = false },
+                { name = "Job ID (Mobile)", value = "`" .. jobId .. "`", inline = false },
+                { name = "Job ID (PC)", value = "```" .. jobId .. "```", inline = false },
+                { name = "Join Script (PC)", value = joinScript, inline = false },
+            },
+            timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z"),
+        }},
     }
-
-    local ok, body = pcall(function() return HttpService:JSONEncode(payload) end)
-    if not ok then return end
-
-    safeRequest({
-        Url = API_URL,
-        Method = "POST",
-        Headers = {
-            ["Content-Type"] = "application/json",
-            ["X-Api-Secret"] = API_SECRET,
-        },
-        Body = body,
-    })
-    print("[API] Enviado:", payload.name, payload.moneyPerSec)
-end
-
--- ====== DISCORD ======
-local function sendNotification(title, desc, color, fields, webhookUrl, pingRole)
-    local embed = {
-        title = title,
-        description = desc,
-        color = color or 0x3AA3E3,
-        fields = fields,
-        timestamp = os.date('!%Y-%m-%dT%H:%M:%S.000Z'),
-        footer = { text = 'Made by Joszz' },
-    }
-
-    local data = {
-        content = pingRole,
-        embeds = { embed }
-    }
-
-    spawn(function()
+    if Config.PingEveryone then
+        payload.content = "@everyone"
+    end
+ 
+    task.spawn(function()
         pcall(function()
-            safeRequest({
-                Url = webhookUrl,
+            request({
+                Url = Config.WebhookUrl,
                 Method = "POST",
-                Headers = { ['Content-Type'] = 'application/json' },
-                Body = HttpService:JSONEncode(data),
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = HttpService:JSONEncode(payload),
             })
         end)
     end)
 end
-
--- ====== MONEY PARSING ======
-local function parseMoney(text)
-    local num = text:match('([%d%.]+)')
-    if not num then return 0 end
-    num = tonumber(num)
-    if text:find('K') then
-        return num * 1000
-    elseif text:find('M') then
-        return num * 1000000
-    elseif text:find('B') then
-        return num * 1000000000
-    end
-    return num or 0
-end
-
-local function getPlayerCount()
-    local players = #Players:GetPlayers()
-    return string.format("%d/%d", players, 8)
-end
-
--- ====== FIND BEST BRAINROT ======
-function findBestBrainrot()
-    if not workspace or not workspace.Plots then return nil end
-
-    local bestBrainrot, bestValue = nil, 0
-    local playerCount = #Players:GetPlayers()
-
-    local function processBrainrotOverhead(overhead)
-        if not overhead then return end
-        local brainrotData = { name = 'Unknown', moneyPerSec = '$0/s', value = '$0', playerCount = playerCount }
-
-        for _, label in pairs(overhead:GetChildren()) do
-            if label:IsA('TextLabel') then
-                local text = label.Text
-                if text:find('/s') then
-                    brainrotData.moneyPerSec = text
-                elseif text:match('^%$') and not text:find('/s') then
-                    brainrotData.value = text
-                else
-                    brainrotData.name = text
-                end
-            end
-        end
-
-        local numericValue = parseMoney(brainrotData.moneyPerSec)
-        if numericValue >= MIN_MONEY_THRESHOLD and numericValue > bestValue then
-            bestValue = numericValue
-            brainrotData.numericMPS = numericValue
-            bestBrainrot = brainrotData
+ 
+------------------------------------------------------------
+-- SERVER HOP
+------------------------------------------------------------
+local function rememberServer(id)
+    State.VisitedServers[id] = true
+    local count = 0
+    for _ in pairs(State.VisitedServers) do count += 1 end
+    if count > Config.MaxRememberedServers then
+        for key in pairs(State.VisitedServers) do
+            State.VisitedServers[key] = nil
+            break
         end
     end
-
-    for _, plot in pairs(workspace.Plots:GetChildren()) do
-        local podiums = plot:FindFirstChild('AnimalPodiums')
-        if podiums then
-            for _, podium in pairs(podiums:GetChildren()) do
-                local overhead = podium:FindFirstChild('Base')
-                if overhead then
-                    overhead = overhead:FindFirstChild('Spawn')
-                    if overhead then
-                        overhead = overhead:FindFirstChild('Attachment')
-                        if overhead then
-                            overhead = overhead:FindFirstChild('AnimalOverhead')
-                            if overhead then processBrainrotOverhead(overhead) end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return bestBrainrot
 end
-
--- ====== HOP SERVER ======
-function hopServer()
-    local http = game:GetService('HttpService')
-    local tries = 0
-
-    while tries < 2 do
-        tries += 1
-        local success, serverInfo = pcall(function()
-            return http:JSONDecode(
-                game:HttpGet('https://games.roblox.com/v1/games/' .. placeId .. '/servers/Public?sortOrder=Asc&limit=100')
-            )
+ 
+local function hopServer()
+    local placeId = game.PlaceId
+ 
+    for _ = 1, 2 do
+        local ok, result = pcall(function()
+            local body = game:HttpGet("https://games.roblox.com/v1/games/" .. placeId
+                .. "/servers/Public?sortOrder=Asc&limit=100")
+            return HttpService:JSONDecode(body)
         end)
-
-        if success and serverInfo and serverInfo.data then
-            local goodServers = {}
-            for _, server in pairs(serverInfo.data) do
-                if server.id and server.playing and server.playing < server.maxPlayers and not visitedServers[server.id] then
-                    table.insert(goodServers, server)
+ 
+        if ok and result and result.data then
+            local candidates = {}
+            for _, server in ipairs(result.data) do
+                if server.id
+                    and server.id ~= game.JobId
+                    and server.playing
+                    and server.playing < server.maxPlayers
+                    and server.playing >= 1
+                    and not State.VisitedServers[server.id] then
+                    table.insert(candidates, server)
                 end
             end
-
-            if #goodServers > 0 then
-                local randomServer = goodServers[math.random(1, #goodServers)]
-                visitedServers[randomServer.id] = true
+ 
+            if #candidates > 0 then
+                local pick = candidates[math.random(1, #candidates)]
+                rememberServer(pick.id)
                 pcall(function()
-                    TeleportService:TeleportToPlaceInstance(placeId, randomServer.id, Players.LocalPlayer)
+                    TeleportService:TeleportToPlaceInstance(placeId, pick.id, Players.LocalPlayer)
                 end)
                 return
             end
         end
         task.wait(0)
     end
-
+ 
     pcall(function()
         TeleportService:TeleportToPlaceInstance(placeId, "random", Players.LocalPlayer)
     end)
 end
-
--- ====== RANGE WEBHOOK LOGIC ======
-function getWebhookAndPing(money)
-    if money >= 400_000_000 then
-        return webhook_400m_plus, role_400m_plus
-    elseif money >= 100_000_000 then
-        return webhook_100_400m, role_100_400m
-    elseif money >= 50_000_000 then
-        return webhook_50_100m, role_50_100m
-    elseif money >= 10_000_000 then
-        return webhook_10_50m, role_10_50m
-    elseif money >= 1_000_000 then
-        return webhook_1_10m, role_1_10m
-    else
-        return nil, nil
-    end
-end
-
--- ====== NOTIFY ======
-function notifyBrainrot()
-    if busy then return end
-    busy = true
-
-    local success, bestBrainrot = pcall(findBestBrainrot)
-    if not success or not bestBrainrot then
-        busy = false
-        return
-    end
-
-    local players = getPlayerCount()
-    local jobId = game.JobId or "Unknown"
-    local brainrotKey = jobId .. "_" .. bestBrainrot.name .. "_" .. bestBrainrot.moneyPerSec
-
-    if not notified[brainrotKey] then
-        notified[brainrotKey] = true
-        local webhook, pingRole = getWebhookAndPing(bestBrainrot.numericMPS)
-        if webhook and webhook ~= "" then
-            local fields = {
-                { name = "🏷️ Name", value = bestBrainrot.name, inline = true },
-                { name = "💰 Money per sec", value = bestBrainrot.moneyPerSec, inline = true },
-                { name = "👥 Players", value = players, inline = true },
-                { name = "Job ID (Mobile)", value = "`" .. jobId .. "`", inline = false },
-                { name = "Job ID (PC)", value = "```" .. jobId .. "```", inline = false },
-                { name = "Join Script (PC)", value = "```game:GetService('TeleportService'):TeleportToPlaceInstance(109983668079237,'" .. jobId .. "',game.Players.LocalPlayer)```", inline = false },
-            }
-
-            sendNotification("ExclusiveNotifier+", "", 0x3AA3E3, fields, webhook, pingRole)
-            pcall(function() sendToApiSameAsDiscord({
-                name = bestBrainrot.name,
-                moneyPerSec = bestBrainrot.moneyPerSec,
-                numericMPS = bestBrainrot.numericMPS,
-                players = players,
-                jobId = jobId,
-                detectedAt = os.date('!%Y-%m-%dT%H:%M:%S.000Z')
-            }) end)
+ 
+------------------------------------------------------------
+-- LOOP PRINCIPAL
+------------------------------------------------------------
+local function scanLoop()
+    while true do
+        task.wait(Config.ScanInterval)
+        if not State.Found then
+            local found, reason = detectLucky()
+            if found and not State.AlreadyNotified[game.JobId] then
+                State.Found = true
+                State.AlreadyNotified[game.JobId] = true
+                sendLuckyEmbed(reason)
+                -- Quita el timer de salto para quedarte en el server con Lucky
+                if State.HeartbeatConn then
+                    State.HeartbeatConn:Disconnect()
+                    State.HeartbeatConn = nil
+                end
+                -- Si prefieres que siga saltando despues de avisar, descomenta:
+                -- task.wait(2); hopServer()
+            end
         end
     end
-    busy = false
 end
-
--- ====== LOOP + HOP ======
-spawn(function()
-    while true do
-        task.wait(0.01)
-        pcall(notifyBrainrot)
-    end
-end)
-
-local start = tick()
-local conn
-conn = RunService.Heartbeat:Connect(function()
-    if tick() - start > timeout then
-        conn:Disconnect()
+ 
+task.spawn(scanLoop)
+ 
+State.HeartbeatConn = RunService.Heartbeat:Connect(function()
+    if tick() - State.StartTime > Config.HopDelay and not State.Found then
+        State.HeartbeatConn:Disconnect()
         hopServer()
     end
 end)
-
+ 
 TeleportService.TeleportInitFailed:Connect(function()
     task.wait(0.1)
     hopServer()
 end)
-
+ 
 TeleportService.LocalPlayerTeleported:Connect(function()
-    if conn then conn:Disconnect() end
+    if State.HeartbeatConn then
+        State.HeartbeatConn:Disconnect()
+    end
 end)
-
+ 
 hopServer()
+ 
